@@ -1,9 +1,9 @@
 " Vim indent file
-" Language:	sql (keywords based on Sybase Adaptive Server Anywhere)
-" Maintainer:	David Fishburn <fishburn@sybase.com>
-" Based on:	Ada.vim  - Neil Bird
-" Last Change:  2002 Aug 23
-" Version:	1.0
+" Language:    sql (keywords based on Sybase Adaptive Server Anywhere)
+" Maintainer:  David Fishburn <fishburn@sybase.com>
+" Based on:    Ada.vim  - Neil Bird
+" Last Change: Sun May 25 2003 11:24:02 PM
+" Version:     1.1
 " Look for the latest version at http://vim.sourceforge.net/
 "
 
@@ -40,8 +40,6 @@ endif
 " These are typically words that start a line.
 let s:SQLBlockStart = '^\s*\(if\|else\|elseif\|elsif\|while\|loop\|do\|begin\|case\|when\)\>'
 let s:SQLBlockEnd = '^\s*\(end\)\>'
-let s:SQLComment = "\\v^(\"[^\"]*\"|'.'|[^\"']){-}\\zs\\s*--.*"
-
 
 " The indent level is also based on unmatched paranethesis
 " If a line has an extra "(" increase the indent
@@ -53,98 +51,104 @@ function s:CountUnbalancedParan( line, paran_to_check )
    let rp = substitute(l, '[^)]', '', 'g')
 
    if a:paran_to_check =~ ')'
-      " echom 'CountUnbalancedParan ) returning: ' . (strlen(rp) - strlen(lp))
+      " echom 'CountUnbalancedParan ) returning: ' .
+      " \ (strlen(rp) - strlen(lp))
       return (strlen(rp) - strlen(lp))
    elseif a:paran_to_check =~ '('
-      " echom 'CountUnbalancedParan ( returning: ' . (strlen(lp) - strlen(rp))
+      " echom 'CountUnbalancedParan ( returning: ' .
+      " \ (strlen(lp) - strlen(rp))
       return (strlen(lp) - strlen(rp))
    else
-      " echom 'CountUnbalancedParan unknown paran to check: ' . a:paran_to_check
+      " echom 'CountUnbalancedParan unknown paran to check: ' .
+      " \ a:paran_to_check
       return 0
    endif
 endfunction
 
 " Unindent commands based on previous indent level
-function s:CheckToUnindentCommand( prev_indent, prev_lnum, num_levels )
+function s:CheckToIgnoreRightParan( prev_lnum, num_levels )
    let lnum = a:prev_lnum
    let line = getline(lnum)
    let ends = 0
-   let ind = a:prev_indent
-   let remaining_indent_level = a:num_levels
-   while lnum > 0
-      " Find previous line with a lower indent level
-      " If command is an if or while, do not unindent the line
-      " Example
-      " if (
-      "    ) then
-      "    leave it indented
-      "
-      " create table T1 (
-      "    id integer
-      "    )
-      " indent should fall back in this case
-      "    
-      if indent(lnum) < a:prev_indent
-         let remaining_indent_level = remaining_indent_level - 1
+   let num_right_paran = a:num_levels
+   let ignore_paran = 0
+   let vircol = 1
 
-         " if line has an if or while clause, leave indent the same
-         if getline(lnum) =~? '\(if\|while\)\>'
-            if remaining_indent_level == 0
-               " echom 'CheckToUnindentCommand - ind: ' . ind
-               return ind
-            endif
-         else
-            let ind = ind - &sw
+   while num_right_paran > 0
+      silent! exec 'norm! '.lnum."G\<bar>".vircol."\<bar>"
+      let right_paran = search( ')', 'W' )
+      if right_paran != lnum
+         " This should not happen since there should be at least
+         " num_right_paran matches for this line
+         break
+      endif
+      let vircol      = virtcol(".")
 
-            if remaining_indent_level == 0
-               " echom 'CheckToUnindentCommand - ind: ' . ind
-               return ind
-            endif
-         endif
+      " if getline(".") =~ '^)'
+      let matching_paran = searchpair('(', '', ')', 'bW',
+                \ 'synIDattr(synID(line("."), col("."), 0), "name") 
+                \           =~? "comment"')
+
+      if matching_paran < 1
+         " No match found
+         " echom 'CTIRP - no match found, ignoring'
+         break
       endif
 
-      let lnum = prevnonblank(lnum - 1)
-      " Get previous non-blank/non-comment-only line
-      while 1
-	 let line = getline(lnum)
-	 let line = substitute( line, s:SQLComment, '', '' )
-	 if line !~ '^\s*$'
-	    break
-	 endif
-	 let lnum = prevnonblank(lnum - 1)
-	 if lnum <= 0
-	    return a:prev_indent
-	 endif
-      endwhile
+      if matching_paran == lnum 
+         " This was not an unmatched parantenses, start the search again
+         " again after this column
+         " echom 'CTIRP - same line match, ignoring'
+         continue
+      endif
+
+      " echom 'CTIRP - match: ' . line(".") . '  ' . getline(".")
+
+      if getline(matching_paran) =~? '\(if\|while\)\>'
+         " echom 'CTIRP - if/while ignored: ' . line(".") . '  ' . getline(".")
+         let ignore_paran = ignore_paran + 1
+      endif
+
+      " One match found, decrease and check for further matches
+      let num_right_paran = num_right_paran - 1
+
    endwhile
 
    " Fallback - just move back one
-   return a:prev_indent - &sw
+   " return a:prev_indent - &sw
+   return ignore_paran
 endfunction
 
 " Find correct indent of a new line based upon the previous line
 function GetSQLIndent()
-   " echom 'GetSQLIndent start indent: ' . indent(v:lnum) . '  line: ' . getline(v:lnum)
    " Find a non-blank line above the current line.
-   let lnum = prevnonblank(v:lnum - 1)
+   " let lnum = prevnonblank(v:lnum - 1)
+   let lnum = v:lnum 
    let ind = indent(lnum)
 
-   " echom 'GetSQLIndent - indent ' . ind . '  line: ' . getline(".")
    " Get previous non-blank/non-comment-only/non-cpp line
    while 1
-      let line = substitute( getline(lnum), s:SQLComment, '', '' )
-      if line !~ '^\s*$'
-         " echom 'previous non blank - break: ' . line
-         break
-      endif
       let lnum = prevnonblank(lnum - 1)
       if lnum <= 0
          return ind
       endif
+
+      " Check the syntax attribute of this line for the first non-white 
+      " space character (match(line("."), '\S'))
+      if synIDattr(synID(lnum, match(getline(lnum), '\S')+1, 0), "name") 
+                \           =~? "comment" 
+         continue
+      endif
+
+      let line = getline(lnum)
+      if line !~ '^\s*$'
+         " echom 'previous non blank - break: ' . line
+         break
+      endif
    endwhile
 
    " echom 'PREVIOUS INDENT: ' . indent(lnum) . '  LINE: ' . getline(lnum) 
-   "
+   
    " This is the line you just hit return on
    " Based on this line, we can determine how much to indent the new
    " line, which is a new blank line
@@ -156,10 +160,6 @@ function GetSQLIndent()
       " Move indent in
       let ind = ind + &sw
       " echom 'prevl - SQLBlockStart - indent ' . ind . '  line: ' . line
-   " elseif line =~? s:SQLBlockEnd
-      " Move indent out
-      " let ind = ind - &sw
-      " echom 'prevl - SQLBlockEnd - indent ' . ind . '  line: ' . line
    elseif line =~ '[()]'
       if line =~ '('
          let num_unmatched_left = s:CountUnbalancedParan( line, '(' )
@@ -169,7 +169,8 @@ function GetSQLIndent()
       if line =~ ')'
          let num_unmatched_right  = s:CountUnbalancedParan( line, ')' )
       else
-         let num_unmatched_right  = s:CountUnbalancedParan( line, ')' )
+         let num_unmatched_right  = 0
+         " let num_unmatched_right  = s:CountUnbalancedParan( line, ')' )
       endif
       if num_unmatched_left > 0
          " There is a open left paranethesis 
@@ -180,9 +181,18 @@ function GetSQLIndent()
          " it was part of a command (ie create table(..)  )
          " instead of part of an if (ie if (....) then) which should
          " maintain the indent level
-         let ind = s:CheckToUnindentCommand( ind, lnum, num_unmatched_right )
-      " else
-      "   echom 'prevl - () balanced - indent ' . ind .
+         let ignore = s:CheckToIgnoreRightParan( lnum, num_unmatched_right )
+         " echom 'prevl - ) unbalanced - CTIRP - ignore: ' . ignore
+
+         if line =~ '^\s*)'
+            let ignore = ignore + 1
+            " echom 'prevl - begins ) unbalanced ignore: ' . ignore
+         endif
+
+         if (num_unmatched_right - ignore) > 0
+            let ind = ind - ( &sw * (num_unmatched_right - ignore) )
+         endif
+
       endif
    endif
 
@@ -204,8 +214,33 @@ function GetSQLIndent()
       " echom 'curr - end - indent ' . ind
    elseif line =~? '^\s*when\>'
       let ind = ind - &sw
-   " else
-     " echom 'CURR fall through: '.ind.' : '.line
+      " elseif line =~ '^\s*)\s*;\?\s*$'
+      " elseif line =~ '^\s*)'
+   elseif line =~ '^\s*)'
+      let num_unmatched_right  = s:CountUnbalancedParan( line, ')' )
+      let ignore = s:CheckToIgnoreRightParan( v:lnum, num_unmatched_right )
+      " If the line ends in a ), then reduce the indent
+      " This catches items like:
+      " CREATE TABLE T1(
+      "    c1 int, 
+      "    c2 int
+      "    );
+      " But we do not want to unindent a line like:
+      " IF ( c1 = 1 
+      " AND  c2 = 3 ) THEN
+      " let num_unmatched_right  = s:CountUnbalancedParan( line, ')' )
+      " if num_unmatched_right > 0
+      " elseif strpart( line, strlen(line)-1, 1 ) =~ ')'
+      " let ind = ind - &sw
+      if line =~ '^\s*)'
+         " let ignore = ignore + 1
+         " echom 'curr - begins ) unbalanced ignore: ' . ignore
+      endif
+
+      if (num_unmatched_right - ignore) > 0
+         let ind = ind - ( &sw * (num_unmatched_right - ignore) )
+      endif
+      " endif
    endif
 
    " echom 'final - indent ' . ind
