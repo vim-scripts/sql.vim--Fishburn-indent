@@ -1,0 +1,14 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=495
+
+This indent file was created for Sybase SQL Anywhere using the Watcom SQL syntax.
+It has also been tested against Oracle packages.
+
+This will not work for Sybase ASE and Microsoft SQL Server which use Transact-SQL syntax.
+
+In preparation for Vim 7, this file has been renamed to sqlanywhere.vim, but will continue to work with Vim 6.  Simply rename it to sql.vim to keep the default behaviour.
+
+Supports a wide variety of syntax including standard the standards: IF, LOOP, CASE.
+But it will also support less used syntax like the EXCEPTION statement.
+
+
+
